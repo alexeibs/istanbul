@@ -89,6 +89,15 @@ window.onload = function () {
       return result;
     }
 
+    function replaceHtmlSpecialChars(str) {
+        var tagsToReplace = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;'
+        };
+        return str.replace(/[&<>]/g, function(tag) { return tagsToReplace[tag]; });
+    }
+
     var coverageTable = document.querySelector('table.coverage');
 
     var lineCount = coverageTable.querySelector('td.line-count');
@@ -108,38 +117,48 @@ window.onload = function () {
     }
 
     var textCell = coverageTable.querySelector("td.text pre");
-    var sourceMapPrefix = '//@ sourceMappingURL=data:application/json;charset=utf-8;base64,';
+    var sourceMapPrefix = 'sourceMappingURL=data:application/json;';
     var sourceMapStart = textCell.innerHTML.indexOf(sourceMapPrefix);
+    if (sourceMapStart == -1) {
+        return;
+    }
+    sourceMapStart += sourceMapPrefix.length;
+    var base64prefix = 'base64,';
+    sourceMapStart = textCell.innerHTML.indexOf(base64prefix, sourceMapStart);
     if (sourceMapStart != -1) {
-        sourceMapStart += sourceMapPrefix.length;
+        sourceMapStart += base64prefix.length;
         var sourceMapEnd = textCell.innerHTML.indexOf('\n', sourceMapStart);
-        if (sourceMapEnd != -1) {
-            var encodedJson = textCell.innerHTML.slice(sourceMapStart, sourceMapEnd);
-            var decodedMap = JSON.parse(base64_decode(encodedJson));
-            var tsCov = getTsCoverage(lineCoverageHits, decodedMap, logError);
-            if (tsCov.lines.length > 0 && tsCov.coverage.length > 0) {
-                var newLineCount = '1';
-                for (var i = 2, imax = tsCov.lines.length; i <= imax; ++i) {
-                    newLineCount += '\n' + i;
-                }
-
-                var newLineCoverage = '', line = '';
-                for (var i = 0, imax = tsCov.coverage.length; i < imax; ++i) {
-                    if (tsCov.coverage[i] === undefined) {
-                        line = '<span class="cline-any cline-neutral">&nbsp;</span>';
-                    } else {
-                        line = '<span class="cline-any cline-yes">' + tsCov.coverage[i] + '</span>';
-                    }
-                    if (newLineCoverage.length > 0)
-                        newLineCoverage += '\n' + line;
-                    else
-                        newLineCoverage += line;
-                }
-
-                lineCount.innerHTML = newLineCount;
-                lineCoverage.innerHTML = newLineCoverage;
-                textCell.innerHTML = decodedMap.sourcesContent[0];
+        if (sourceMapEnd == -1) {
+            sourceMapEnd = textCell.innerHTML.length;
+        }
+        var encodedJson = textCell.innerHTML.slice(sourceMapStart, sourceMapEnd);
+        var decodedMap = JSON.parse(base64_decode(encodedJson));
+        if (decodedMap.sources[0] === null) { // grunt-react writes null instead of file name
+            decodedMap.sources[0] = 'dummy';
+        }
+        var tsCov = getTsCoverage(lineCoverageHits, decodedMap, logError);
+        if (tsCov.lines.length > 0 && tsCov.coverage.length > 0) {
+            var newLineCount = '1';
+            for (var i = 2, imax = tsCov.lines.length; i <= imax; ++i) {
+                newLineCount += '\n' + i;
             }
+
+            var newLineCoverage = '', line = '';
+            for (var i = 0, imax = tsCov.coverage.length; i < imax; ++i) {
+                if (tsCov.coverage[i] === undefined) {
+                    line = '<span class="cline-any cline-neutral">&nbsp;</span>';
+                } else {
+                    line = '<span class="cline-any cline-yes">' + tsCov.coverage[i] + '</span>';
+                }
+                if (newLineCoverage.length > 0)
+                    newLineCoverage += '\n' + line;
+                else
+                    newLineCoverage += line;
+            }
+
+            lineCount.innerHTML = newLineCount;
+            lineCoverage.innerHTML = newLineCoverage;
+            textCell.innerHTML = replaceHtmlSpecialChars(decodedMap.sourcesContent[0]);
         }
     }
 
