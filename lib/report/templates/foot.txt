@@ -12,6 +12,139 @@ window.onload = function () {
         }
 };
 </script>
+<script type="text/javascript" src="../source-map.js"></script>
+<script>
+(function() {
+    function base64_decode( data ) {    // Decodes data encoded with MIME base64
+        //
+        // +   original by: Tyler Akins (http://rumkin.com)
+
+        var b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+        var o1, o2, o3, h1, h2, h3, h4, bits, i=0, enc='';
+
+        do {  // unpack four hexets into three octets using index points in b64
+            h1 = b64.indexOf(data.charAt(i++));
+            h2 = b64.indexOf(data.charAt(i++));
+            h3 = b64.indexOf(data.charAt(i++));
+            h4 = b64.indexOf(data.charAt(i++));
+
+            bits = h1<<18 | h2<<12 | h3<<6 | h4;
+
+            o1 = bits>>16 & 0xff;
+            o2 = bits>>8 & 0xff;
+            o3 = bits & 0xff;
+
+            if (h3 == 64)     enc += String.fromCharCode(o1);
+            else if (h4 == 64) enc += String.fromCharCode(o1, o2);
+            else               enc += String.fromCharCode(o1, o2, o3);
+        } while (i < data.length);
+
+        return enc;
+    }
+
+    var loggerOutput = null;
+    function logError() {
+        var line = '';
+        for (var i = 0, imax = arguments.length; i < imax; ++i) {
+            line += arguments[i] + ' ';
+        }
+        if (!loggerOutput) {
+            loggerOutput = document.createElement('pre');
+            document.body.appendChild(loggerOutput);
+        }
+        loggerOutput.innerHTML += line + '\n';
+    }
+
+    function getTsCoverage(jsCoverage, tsSourceMap, errorReporter) {
+      var result = {
+        coverage: [],
+        lines: []
+      };
+
+      var mapIsValid = tsSourceMap.sources && tsSourceMap.sources.length == 1 &&
+        tsSourceMap.sourcesContent && tsSourceMap.sourcesContent.length == 1;
+      if (!mapIsValid) {
+        errorReporter("Source map is invalid.");
+        return result;
+      }
+
+      var tsFile = tsSourceMap.sourcesContent[0].split('\n');
+      var tsCoverage = new Array(tsFile.length);
+
+      var lineMap = {};
+      var consumer = new window.sourceMap.SourceMapConsumer(tsSourceMap);
+      consumer.eachMapping(function(mapping) {
+        if (lineMap[mapping.generatedLine] == undefined) {
+          lineMap[mapping.generatedLine] = mapping.originalLine;
+          tsCoverage[mapping.originalLine - 1] = jsCoverage[mapping.generatedLine - 1];
+        } else {
+          if (lineMap[mapping.generatedLine] != mapping.originalLine) {
+            errorReporter('Warning: conflict at lines ', mapping.generatedLine, lineMap[mapping.generatedLine], mapping.originalLine);
+          }
+        }
+      });
+
+      result.coverage = tsCoverage;
+      result.lines = tsFile;
+      return result;
+    }
+
+    var coverageTable = document.querySelector('table.coverage');
+
+    var lineCount = coverageTable.querySelector('td.line-count');
+    var numberOfLines = lineCount.innerHTML.split('\n').length;
+
+    var lineCoverage = coverageTable.querySelector('td.line-coverage');
+
+    var lineCoverageItems = lineCoverage.querySelectorAll('span.cline-any');
+    if (numberOfLines != lineCoverageItems.length) {
+        logError('numberOfLines != lineCoverageItems.length');
+    }
+    var lineCoverageHits = new Array(numberOfLines);
+    for (var i = 0, imax = lineCoverageItems.length; i < imax; ++i) {
+        if (lineCoverageItems[i].className.indexOf('cline-yes') !== -1) {
+            lineCoverageHits[i] = +lineCoverageItems[i].innerHTML;
+        }
+    }
+
+    var textCell = coverageTable.querySelector("td.text pre");
+    var sourceMapPrefix = '//@ sourceMappingURL=data:application/json;charset=utf-8;base64,';
+    var sourceMapStart = textCell.innerHTML.indexOf(sourceMapPrefix);
+    if (sourceMapStart != -1) {
+        sourceMapStart += sourceMapPrefix.length;
+        var sourceMapEnd = textCell.innerHTML.indexOf('\n', sourceMapStart);
+        if (sourceMapEnd != -1) {
+            var encodedJson = textCell.innerHTML.slice(sourceMapStart, sourceMapEnd);
+            var decodedMap = JSON.parse(base64_decode(encodedJson));
+            var tsCov = getTsCoverage(lineCoverageHits, decodedMap, logError);
+            if (tsCov.lines.length > 0 && tsCov.coverage.length > 0) {
+                var newLineCount = '1';
+                for (var i = 2, imax = tsCov.lines.length; i <= imax; ++i) {
+                    newLineCount += '\n' + i;
+                }
+
+                var newLineCoverage = '', line = '';
+                for (var i = 0, imax = tsCov.coverage.length; i < imax; ++i) {
+                    if (tsCov.coverage[i] === undefined) {
+                        line = '<span class="cline-any cline-neutral">&nbsp;</span>';
+                    } else {
+                        line = '<span class="cline-any cline-yes">' + tsCov.coverage[i] + '</span>';
+                    }
+                    if (newLineCoverage.length > 0)
+                        newLineCoverage += '\n' + line;
+                    else
+                        newLineCoverage += line;
+                }
+
+                lineCount.innerHTML = newLineCount;
+                lineCoverage.innerHTML = newLineCoverage;
+                textCell.innerHTML = decodedMap.sourcesContent[0];
+            }
+        }
+    }
+
+})();
+</script>
 {{/if}}
 <script src="{{sorter.js}}"></script>
 </body>
